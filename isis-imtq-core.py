@@ -105,4 +105,49 @@ def k_imtq_reset():
     """)
     C.k_imtq_reset()
     
-    
+def k_adcs_init(bus, addr, timeout):
+    from cffi import FFI
+    ffi = FFI()
+    ffi.cdef("""
+        KADCSStatus k_adcs_init(KI2CNum bus, uint16_t addr, int timeout);
+    """)
+    C = ffi.verify("""
+        KADCSStatus k_adcs_init(KI2CNum bus, uint16_t addr, int timeout) {
+            KI2CConf conf = k_i2c_conf_defaults();
+            i2c_bus = bus;
+            imqt_addr = addr;
+            wd_timeout = timeout;
+            KI2CStatus status;
+            status = k_i2c_init(i2c_bus, &conf);
+            if (status != I2C_OK)
+            {
+                fprintf(stderr, "Failed to initialize iMTQ: %d\n", status);
+                return ADCS_ERROR;
+            }
+
+            pthread_mutexattr_t mutex_attr;
+            if (pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK) != 0)
+            {
+        perror("Failed to set up MTQ mutex attr");
+        k_adcs_terminate();
+        return ADCS_ERROR_MUTEX;
+    }
+    if (pthread_mutex_init(&imtq_mutex, &mutex_attr) != 0)
+    {
+        perror("Failed to set up MTQ mutex");
+        k_adcs_terminate();
+        return ADCS_ERROR_MUTEX;
+    }
+
+    KADCSStatus imtq_status;
+
+    /* Call noop to verify iMTQ is online */
+    imtq_status = k_adcs_noop();
+    if (imtq_status != ADCS_OK)
+    {
+        fprintf(stderr, "Failed to verify iMTQ is online: %d\n", imtq_status);
+        k_adcs_terminate();
+        return ADCS_ERROR;
+    }
+
+    return ADCS_OK;
